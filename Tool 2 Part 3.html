@@ -1,0 +1,644 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mine Tailings Cover — Percolation Estimator</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:ital,wght@0,400;0,500;1,400&family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,600;1,9..144,300&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0e110d;
+    --surface: #161a14;
+    --surface2: #1e2419;
+    --border: #2e3828;
+    --accent: #7db87a;
+    --accent2: #c8e6c5;
+    --warn: #e8c56a;
+    --danger: #e07a5f;
+    --text: #d4dbd0;
+    --muted: #6b7d65;
+    --font-display: 'Fraunces', Georgia, serif;
+    --font-mono: 'DM Mono', 'Courier New', monospace;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-mono);
+    font-size: 13px;
+    line-height: 1.6;
+    min-height: 100vh;
+  }
+
+  /* Subtle noise texture overlay */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
+    pointer-events: none;
+    z-index: 0;
+    opacity: 0.6;
+  }
+
+  .wrap {
+    position: relative;
+    z-index: 1;
+    max-width: 960px;
+    margin: 0 auto;
+    padding: 48px 24px 80px;
+  }
+
+  /* ── Header ── */
+  header {
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 32px;
+    margin-bottom: 40px;
+  }
+
+  .eyebrow {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 12px;
+  }
+
+  h1 {
+    font-family: var(--font-display);
+    font-weight: 300;
+    font-size: clamp(28px, 5vw, 46px);
+    line-height: 1.1;
+    color: var(--accent2);
+    margin-bottom: 12px;
+  }
+
+  h1 em {
+    font-style: italic;
+    color: var(--accent);
+  }
+
+  .subtitle {
+    color: var(--muted);
+    font-size: 12px;
+    max-width: 520px;
+  }
+
+  /* ── Layout grid ── */
+  .grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 2px;
+    margin-bottom: 2px;
+  }
+
+  @media (max-width: 640px) {
+    .grid { grid-template-columns: 1fr; }
+  }
+
+  /* ── Cards ── */
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    padding: 24px;
+  }
+
+  .card-full {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    padding: 24px;
+    margin-bottom: 2px;
+  }
+
+  .card-label {
+    font-size: 10px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 16px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .card-label::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--border);
+  }
+
+  /* ── Form inputs ── */
+  .field {
+    margin-bottom: 16px;
+  }
+
+  label {
+    display: block;
+    font-size: 11px;
+    color: var(--muted);
+    margin-bottom: 5px;
+  }
+
+  label span.unit {
+    color: var(--accent);
+    font-style: italic;
+  }
+
+  input[type="number"], select {
+    width: 100%;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-family: var(--font-mono);
+    font-size: 13px;
+    padding: 8px 10px;
+    outline: none;
+    transition: border-color 0.15s;
+    appearance: none;
+    -webkit-appearance: none;
+  }
+
+  input[type="number"]:focus, select:focus {
+    border-color: var(--accent);
+  }
+
+  .hint {
+    font-size: 10px;
+    color: var(--muted);
+    margin-top: 3px;
+    font-style: italic;
+  }
+
+  /* ── Run button ── */
+  .run-btn {
+    display: block;
+    width: 100%;
+    padding: 14px;
+    background: var(--accent);
+    color: var(--bg);
+    border: none;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: background 0.15s, transform 0.1s;
+    margin-top: 4px;
+  }
+
+  .run-btn:hover { background: var(--accent2); }
+  .run-btn:active { transform: scale(0.99); }
+
+  /* ── Results ── */
+  #results { display: none; }
+
+  .result-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .result-row:last-child { border-bottom: none; }
+
+  .result-key {
+    font-size: 11px;
+    color: var(--muted);
+  }
+
+  .result-val {
+    font-size: 15px;
+    font-weight: 500;
+    color: var(--accent2);
+    font-family: var(--font-mono);
+  }
+
+  /* ── Verdict banner ── */
+  .verdict {
+    padding: 20px 24px;
+    border-left: 4px solid;
+    margin-bottom: 2px;
+    display: none;
+  }
+
+  .verdict.pass {
+    background: #0d1f0d;
+    border-color: var(--accent);
+  }
+
+  .verdict.warn {
+    background: #1f1a08;
+    border-color: var(--warn);
+  }
+
+  .verdict.fail {
+    background: #1f0e0a;
+    border-color: var(--danger);
+  }
+
+  .verdict-head {
+    font-family: var(--font-display);
+    font-size: 20px;
+    font-weight: 600;
+    margin-bottom: 6px;
+  }
+
+  .verdict.pass .verdict-head { color: var(--accent); }
+  .verdict.warn .verdict-head { color: var(--warn); }
+  .verdict.fail .verdict-head { color: var(--danger); }
+
+  .verdict-body { font-size: 12px; color: var(--text); }
+
+  /* ── Water balance bar chart ── */
+  .bar-section {
+    margin-top: 8px;
+  }
+
+  .bar-label {
+    display: flex;
+    justify-content: space-between;
+    font-size: 10px;
+    color: var(--muted);
+    margin-bottom: 3px;
+  }
+
+  .bar-track {
+    height: 20px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    margin-bottom: 8px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .bar-fill {
+    height: 100%;
+    transition: width 0.6s cubic-bezier(.23,1,.32,1);
+  }
+
+  .bar-fill.runoff  { background: #4a7fc1; }
+  .bar-fill.et      { background: #7db87a; }
+  .bar-fill.perc    { background: #e07a5f; }
+  .bar-fill.storage { background: #6b7d65; }
+
+  /* ── Legend ── */
+  .legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-top: 10px;
+  }
+
+  .leg-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 10px;
+    color: var(--muted);
+  }
+
+  .leg-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 2px;
+    flex-shrink: 0;
+  }
+
+  /* ── Equations box ── */
+  .eq-box {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    padding: 16px;
+    font-size: 11px;
+    color: var(--muted);
+    line-height: 2;
+    margin-top: 8px;
+  }
+
+  .eq-box code {
+    color: var(--accent);
+    font-family: var(--font-mono);
+  }
+
+  /* ── Caveat list ── */
+  .caveat-list {
+    list-style: none;
+    padding: 0;
+    margin-top: 8px;
+  }
+
+  .caveat-list li {
+    padding: 6px 0 6px 16px;
+    font-size: 11px;
+    color: var(--muted);
+    border-bottom: 1px dashed var(--border);
+    position: relative;
+  }
+
+  .caveat-list li::before {
+    content: '⚑';
+    position: absolute;
+    left: 0;
+    color: var(--warn);
+    font-size: 9px;
+  }
+
+  .caveat-list li:last-child { border-bottom: none; }
+
+  /* ── Footer ── */
+  footer {
+    margin-top: 48px;
+    padding-top: 16px;
+    border-top: 1px solid var(--border);
+    font-size: 10px;
+    color: var(--muted);
+    text-align: center;
+    letter-spacing: 0.06em;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div class="eyebrow">CIVE 438 · Solid Waste Engineering</div>
+    <h1>Mine Tailings Cover<br><em>Percolation Estimator</em></h1>
+    <p class="subtitle">A simplified annual water balance model for single-layer tailings cover design. Estimates percolation through the cover using the SCS Curve Number method and Darcy's Law.</p>
+  </header>
+
+  <!-- Input section -->
+  <div class="card-full">
+    <div class="card-label">Site &amp; Climate Inputs</div>
+    <div class="grid">
+      <div class="card" style="border:none; padding: 0 24px 0 0;">
+        <div class="field">
+          <label>Annual Precipitation <span class="unit">mm/yr</span></label>
+          <input type="number" id="precip" value="450" min="0" max="5000" step="10">
+          <div class="hint">Typical semi-arid mine sites: 200–600 mm/yr</div>
+        </div>
+        <div class="field">
+          <label>SCS Curve Number (CN) <span class="unit">dimensionless</span></label>
+          <input type="number" id="cn" value="70" min="1" max="100" step="1">
+          <div class="hint">Bare/compacted soil ~80, vegetated cover ~60–70</div>
+        </div>
+        <div class="field">
+          <label>Annual Evapotranspiration (ET) <span class="unit">mm/yr</span></label>
+          <input type="number" id="et" value="320" min="0" max="3000" step="10">
+          <div class="hint">Arid/semi-arid: 200–500 mm/yr; humid: 500–900</div>
+        </div>
+      </div>
+      <div class="card" style="border:none; padding: 0 0 0 24px; border-left: 1px solid var(--border);">
+        <div class="field">
+          <label>Cover Hydraulic Conductivity (K) <span class="unit">mm/yr</span></label>
+          <input type="number" id="ksat" value="3.15" min="0.001" max="31536000" step="0.1">
+          <div class="hint">Compacted clay ~3 mm/yr (≈1×10⁻⁷ m/s); sandy loam ~31,536</div>
+        </div>
+        <div class="field">
+          <label>Cover Thickness <span class="unit">m</span></label>
+          <input type="number" id="thickness" value="1.0" min="0.1" max="10" step="0.1">
+          <div class="hint">Typical: 0.5–2.0 m</div>
+        </div>
+        <div class="field">
+          <label>Hydraulic Gradient (i) <span class="unit">m/m</span></label>
+          <input type="number" id="gradient" value="1.0" min="0.01" max="10" step="0.01">
+          <div class="hint">Saturated cover ≈ 1.0 (conservative); slope effects increase this</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="field" style="margin-top: 12px;">
+      <label>Regulatory Percolation Threshold <span class="unit">mm/yr</span></label>
+      <select id="threshold">
+        <option value="30">30 mm/yr — Stringent (acid-generating tailings, wet climate)</option>
+        <option value="60" selected>60 mm/yr — Moderate (typical regulatory target)</option>
+        <option value="150">150 mm/yr — Relaxed (arid sites, low-risk tailings)</option>
+        <option value="custom">Custom…</option>
+      </select>
+    </div>
+    <div class="field" id="custom-threshold-field" style="display:none;">
+      <label>Custom Threshold <span class="unit">mm/yr</span></label>
+      <input type="number" id="custom-threshold" value="60" min="1" step="1">
+    </div>
+
+    <button class="run-btn" onclick="runModel()">▶ Run Water Balance Model</button>
+  </div>
+
+  <!-- Verdict -->
+  <div class="verdict" id="verdict">
+    <div class="verdict-head" id="verdict-head"></div>
+    <div class="verdict-body" id="verdict-body"></div>
+  </div>
+
+  <!-- Results -->
+  <div id="results">
+    <div class="grid">
+      <div class="card">
+        <div class="card-label">Water Balance Results</div>
+        <div class="result-row">
+          <span class="result-key">Annual Precipitation (P)</span>
+          <span class="result-val" id="r-precip">—</span>
+        </div>
+        <div class="result-row">
+          <span class="result-key">Runoff (Q) via SCS-CN</span>
+          <span class="result-val" id="r-runoff">—</span>
+        </div>
+        <div class="result-row">
+          <span class="result-key">Net Infiltration (P − Q)</span>
+          <span class="result-val" id="r-infil">—</span>
+        </div>
+        <div class="result-row">
+          <span class="result-key">Evapotranspiration (ET)</span>
+          <span class="result-val" id="r-et">—</span>
+        </div>
+        <div class="result-row">
+          <span class="result-key">Water Available for Percolation</span>
+          <span class="result-val" id="r-avail">—</span>
+        </div>
+        <div class="result-row" style="border-top: 1px solid var(--accent); margin-top:4px; padding-top:14px;">
+          <span class="result-key">Darcy Percolation (q = K · i)</span>
+          <span class="result-val" id="r-darcy">—</span>
+        </div>
+        <div class="result-row">
+          <span class="result-key" style="color: var(--accent2); font-weight:500;">Estimated Percolation Through Cover</span>
+          <span class="result-val" id="r-perc" style="font-size: 20px;">—</span>
+        </div>
+        <div class="result-row">
+          <span class="result-key">Percolation Threshold</span>
+          <span class="result-val" id="r-threshold">—</span>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-label">Water Balance Breakdown</div>
+        <div class="bar-section" id="bar-chart"></div>
+        <div class="legend">
+          <div class="leg-item"><div class="leg-dot" style="background:#4a7fc1"></div>Runoff</div>
+          <div class="leg-item"><div class="leg-dot" style="background:#7db87a"></div>Evapotranspiration</div>
+          <div class="leg-item"><div class="leg-dot" style="background:#e07a5f"></div>Percolation</div>
+          <div class="leg-item"><div class="leg-dot" style="background:#6b7d65"></div>Soil Storage / Residual</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid">
+      <div class="card">
+        <div class="card-label">Model Equations</div>
+        <div class="eq-box">
+          <div><code>S = (25400 / CN) − 254</code> &nbsp;[SCS retention, mm]</div>
+          <div><code>Q = (P − 0.2·S)² / (P + 0.8·S)</code> &nbsp;[Runoff, mm/yr]</div>
+          <div><code>Infiltration = P − Q</code></div>
+          <div><code>ΔW = max(0, Infiltration − ET)</code> &nbsp;[Water available]</div>
+          <div><code>q_darcy = K · i</code> &nbsp;[Darcy flux, mm/yr]</div>
+          <div><code>Percolation = min(ΔW, q_darcy)</code> &nbsp;[Limiting term]</div>
+        </div>
+        <p style="font-size:10px; color: var(--muted); margin-top:10px;">
+          Percolation is limited by whichever is smaller: the water available after ET, or the Darcy flux capacity of the cover. A low-K cover may be capacity-limited even when water is available; a high-K cover passes water freely up to supply limits.
+        </p>
+      </div>
+
+      <div class="card">
+        <div class="card-label">Assumptions &amp; Caveats</div>
+        <ul class="caveat-list">
+          <li>Annual lumped water balance — does not capture seasonal or storm-event dynamics</li>
+          <li>SCS-CN applied annually; method was developed for storm events and may overestimate runoff</li>
+          <li>ET assumed fully available (no soil moisture accounting); real ET may be water-limited</li>
+          <li>Single homogeneous cover layer; no preferential flow, macropores, or freeze-thaw effects</li>
+          <li>Hydraulic gradient assumed constant; real gradient varies with saturation state</li>
+          <li>Does not account for lateral drainage or geomembrane components</li>
+          <li>Results should be verified against site-specific data and regulatory guidance (e.g., EPA HELP model)</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <footer>Mine Tailings Cover Percolation Estimator · CIVE 438 · Spring 2026 · For educational use only — not a substitute for professional engineering analysis</footer>
+</div>
+
+<script>
+  // Show/hide custom threshold
+  document.getElementById('threshold').addEventListener('change', function() {
+    document.getElementById('custom-threshold-field').style.display =
+      this.value === 'custom' ? 'block' : 'none';
+  });
+
+  function fmt(val, decimals = 1) {
+    return val.toFixed(decimals) + ' mm/yr';
+  }
+
+  function runModel() {
+    const P      = parseFloat(document.getElementById('precip').value);
+    const CN     = parseFloat(document.getElementById('cn').value);
+    const ET     = parseFloat(document.getElementById('et').value);
+    const K      = parseFloat(document.getElementById('ksat').value);
+    const i      = parseFloat(document.getElementById('gradient').value);
+
+    const threshSel = document.getElementById('threshold').value;
+    const threshold = threshSel === 'custom'
+      ? parseFloat(document.getElementById('custom-threshold').value)
+      : parseFloat(threshSel);
+
+    // --- SCS Curve Number runoff ---
+    const S = (25400 / CN) - 254;           // max retention (mm)
+    let Q = 0;
+    if (P > 0.2 * S) {
+      Q = Math.pow(P - 0.2 * S, 2) / (P + 0.8 * S);
+    }
+
+    // --- Water balance ---
+    const infiltration = P - Q;
+    const waterAvail   = Math.max(0, infiltration - ET);
+
+    // --- Darcy flux capacity of cover ---
+    const darcyFlux = K * i;
+
+    // --- Percolation = min(available water, cover capacity) ---
+    const percolation = Math.min(waterAvail, darcyFlux);
+
+    // --- Soil storage / residual (accounting term) ---
+    const storage = Math.max(0, waterAvail - percolation);
+
+    // --- Display results ---
+    document.getElementById('r-precip').textContent    = fmt(P);
+    document.getElementById('r-runoff').textContent    = fmt(Q);
+    document.getElementById('r-infil').textContent     = fmt(infiltration);
+    document.getElementById('r-et').textContent        = fmt(ET);
+    document.getElementById('r-avail').textContent     = fmt(waterAvail);
+    document.getElementById('r-darcy').textContent     = fmt(darcyFlux);
+    document.getElementById('r-perc').textContent      = fmt(percolation);
+    document.getElementById('r-threshold').textContent = fmt(threshold);
+
+    // --- Verdict ---
+    const verdictEl   = document.getElementById('verdict');
+    const verdictHead = document.getElementById('verdict-head');
+    const verdictBody = document.getElementById('verdict-body');
+    verdictEl.className = 'verdict';
+
+    const ratio = percolation / threshold;
+
+    if (ratio <= 0.75) {
+      verdictEl.classList.add('pass');
+      verdictHead.textContent = '✓ Cover Meets Percolation Target';
+      verdictBody.textContent =
+        `Estimated percolation (${percolation.toFixed(1)} mm/yr) is ${Math.round((1-ratio)*100)}% below the ${threshold} mm/yr threshold. `
+        + (waterAvail < darcyFlux
+          ? 'Cover capacity exceeds available water — the design is supply-limited (ET and runoff are controlling).'
+          : 'The cover hydraulic conductivity is the limiting control — reducing K would further decrease percolation.');
+    } else if (ratio <= 1.0) {
+      verdictEl.classList.add('warn');
+      verdictHead.textContent = '⚠ Marginal — Near Percolation Limit';
+      verdictBody.textContent =
+        `Estimated percolation (${percolation.toFixed(1)} mm/yr) is within 25% of the ${threshold} mm/yr threshold. `
+        + 'Consider reducing hydraulic conductivity (lower K soil), increasing cover thickness, or enhancing vegetative ET. Apply a safety factor before accepting this design.';
+    } else {
+      verdictEl.classList.add('fail');
+      verdictHead.textContent = '✗ Cover Exceeds Percolation Target';
+      verdictBody.textContent =
+        `Estimated percolation (${percolation.toFixed(1)} mm/yr) exceeds the ${threshold} mm/yr threshold by ${Math.round((ratio-1)*100)}%. `
+        + (waterAvail > darcyFlux
+          ? 'The cover is capacity-limited: reduce K or add a geomembrane barrier layer.'
+          : 'Water supply exceeds cover capacity: improve runoff (higher CN) or increase ET (vegetation).');
+    }
+
+    verdictEl.style.display = 'block';
+
+    // --- Bar chart ---
+    const total = P > 0 ? P : 1;
+    const bars = [
+      { label: 'Runoff (Q)', val: Q,           cls: 'runoff',  color: '#4a7fc1' },
+      { label: 'Evapotranspiration', val: ET,   cls: 'et',      color: '#7db87a' },
+      { label: 'Percolation',  val: percolation,cls: 'perc',    color: '#e07a5f' },
+      { label: 'Soil Storage / Residual', val: Math.max(0, P - Q - ET - percolation), cls: 'storage', color: '#6b7d65' },
+    ];
+
+    const chart = document.getElementById('bar-chart');
+    chart.innerHTML = '';
+    bars.forEach(b => {
+      const pct = Math.min(100, (b.val / total) * 100);
+      chart.innerHTML += `
+        <div class="bar-label">
+          <span>${b.label}</span>
+          <span>${b.val.toFixed(1)} mm/yr (${pct.toFixed(1)}% of P)</span>
+        </div>
+        <div class="bar-track">
+          <div class="bar-fill ${b.cls}" style="width: 0%; background: ${b.color};" data-pct="${pct}"></div>
+        </div>`;
+    });
+
+    // Animate bars
+    requestAnimationFrame(() => {
+      document.querySelectorAll('.bar-fill').forEach(el => {
+        el.style.width = el.dataset.pct + '%';
+      });
+    });
+
+    document.getElementById('results').style.display = 'block';
+    document.getElementById('results').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+</script>
+</body>
+</html>
