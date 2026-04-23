@@ -8,3 +8,7 @@ Assignment for Tool 2 using Claude for coding and some assistance with the other
 
 I acknowledge that this is still a problem dealing with water, similar to Tool 1, but the hazardous waste I am most familiar with is mine tailings, which are only as hazardous as the amount of water that gets to them.
 
+
+
+GitHub page:https://github.com/Lvecc27/cive-438-tool-2
+
