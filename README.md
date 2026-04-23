@@ -6,5 +6,5 @@ Assignment for Tool 2 using Claude for coding and some assistance with the other
 
 
 
-I acknowledge that this is still a problem dealing with water, similar to Tool 1, but the hazardous waste I am most familiar with is mine tailings, which are only as hazardous as the amount of water that gets to them.
+This tool deals with hazardous waster in the form of mine tailings, and it addresses issues regarding percolation through the cover on top of such piles, which if addressed improperly can lead to acid rock drainage. This problem is inspired by my senior design project, as I have been helping to design a cover for a new tailings pile for a real-life mine.
 
